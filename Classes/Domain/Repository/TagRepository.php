@@ -10,8 +10,10 @@ namespace GeorgRinger\News\Domain\Repository;
  */
 use GeorgRinger\News\Domain\Model\DemandInterface;
 use GeorgRinger\News\Utility\Validation;
+use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Extbase\Persistence\QueryInterface;
+use TYPO3\CMS\Extbase\Utility\DebuggerUtility;
 
 /**
  * Repository for tag objects
@@ -52,6 +54,31 @@ class TagRepository extends \GeorgRinger\News\Domain\Repository\AbstractDemanded
                 $conditions
             ))->execute();
     }
+
+	/**
+	 * @param $demand
+	 * @param $newsDemand
+	 * @return QueryInterface
+	 */
+    public function getTagsWithNewsDemand($demand, $newsDemand) {
+    	$newsRepository = $this->objectManager->get(NewsRepository::class);
+    	$resultSQL = $newsRepository->findDemandedRaw($newsDemand);
+		$connection = GeneralUtility::makeInstance(ConnectionPool::class)
+			->getConnectionForTable('tx_news_domain_model_tag');
+		try {
+			$res = $connection->query(
+				'SELECT tag.title , IFNULL(count(tag_mm.uid_foreign),0) as `count` FROM tx_news_domain_model_tag AS tag ' .
+					'LEFT JOIN (' .
+						'SELECT news.title, tx_news_domain_model_news_tag_mm.uid_local, tx_news_domain_model_news_tag_mm.uid_foreign FROM tx_news_domain_model_news_tag_mm ' .
+							'RIGHT JOIN (' . $resultSQL . ') AS news ON news.uid = tx_news_domain_model_news_tag_mm.uid_local'.
+					') AS tag_mm ON tag_mm.uid_foreign = tag.uid ' .
+				'WHERE tag.uid IN (' . $demand->getTags(). ') GROUP BY tag.title'
+			);
+			return $res->fetchAll();
+		} catch(\Exception $e){
+			DebuggerUtility::var_dump($e);
+		}
+	}
 
     /**
      * Returns an array of constraints created from a given demand object.
